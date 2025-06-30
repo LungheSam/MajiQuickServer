@@ -1,10 +1,12 @@
 const admin = require('firebase-admin');
-const serviceAccount = require('../services/majiquick-firebase-adminsdk-fbsvc-6152f54818.json');
+
+const firebaseConfig = JSON.parse(process.env.FIREBASE_CONFIG);
 
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
+  credential: admin.credential.cert(firebaseConfig)
 });
 
 const db = admin.firestore();
 
 module.exports = db;
+
