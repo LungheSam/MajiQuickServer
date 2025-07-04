@@ -1,5 +1,7 @@
 const mqtt = require('mqtt');
+const admin = require('firebase-admin'); // ✅ Required to use admin.firestore()
 const db = require('../services/firebaseAdmin');
+
 const topicFromHardware = 'majiquick/fromHardware';
 const topicToHardware = 'majiquick/toHardware';
 
