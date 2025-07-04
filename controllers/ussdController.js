@@ -62,8 +62,6 @@
 const { sendSMS } = require('../services/africasTalking');
 const db = require('../services/firebaseAdmin');
 
-const sessions = {};
-
 function handleUSSD(req, res) {
   const { sessionId, phoneNumber, text } = req.body;
   const input = text.split('*');
@@ -82,7 +80,6 @@ function handleUSSD(req, res) {
     const cost = jerrycans * 100;
     const code = Math.floor(100000 + Math.random() * 900000);
 
-    // Save to Firestore
     const purchase = {
       phone: phoneNumber,
       jerrycans,
@@ -108,32 +105,35 @@ Thank you for using MajiQuick.`;
         res.send('END System error. Try again.');
       });
     return;
+
   } else if (text === '2') {
-    // ✅ Handle Check Balance
+    // Prompt for code
+    response = 'CON Enter your 6-digit code:';
+
+  } else if (level === 2 && input[0] === '2') {
+    const userCode = input[1];
+
     db.collection('purchases')
+      .where('code', '==', userCode)
       .where('phone', '==', phoneNumber)
-      .where('status', '==', 'unused')
+      .limit(1)
       .get()
       .then(snapshot => {
-        let totalJerrycans = 0;
-        let totalCost = 0;
-
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          totalJerrycans += data.jerrycans || 0;
-          totalCost += data.cost || 0;
-        });
-
-        response = `END Balance:
-🪣 Jerrycans: ${totalJerrycans}
-💰 Value: ${totalCost} UGX`;
-
+        if (snapshot.empty) {
+          response = 'END Invalid or expired code.';
+        } else {
+          const doc = snapshot.docs[0].data();
+          response = `END Code: ${doc.code}
+🪣 Jerrycans: ${doc.jerrycans}
+💰 Cost: ${doc.cost} UGX
+📌 Status: ${doc.status}`;
+        }
         res.set('Content-Type', 'text/plain');
         res.send(response);
       })
       .catch(err => {
-        console.error('❌ Firestore Error (Balance):', err);
-        res.send('END Error checking balance. Try again.');
+        console.error('❌ Firestore Error (Check Code):', err);
+        res.send('END System error. Try again.');
       });
     return;
   } else {
@@ -145,3 +145,4 @@ Thank you for using MajiQuick.`;
 }
 
 module.exports = handleUSSD;
+
