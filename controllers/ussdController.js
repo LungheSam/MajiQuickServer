@@ -69,23 +69,32 @@ function handleUSSD(req, res) {
 
   let response = '';
 
+  // Step 1: Initial Menu
   if (text === '') {
     response = `CON Welcome to MajiQuick
 1. Buy Water
 2. Check Balance`;
-  } else if (text === '1') {
+  }
+
+  // Step 2: Buy Water Flow
+  else if (text === '1') {
     response = 'CON Enter number of jerrycans:';
-  } else if (level === 2 && input[0] === '1') {
+  }
+
+  // Step 3: Process Purchase
+  else if (level === 2 && input[0] === '1') {
     const jerrycans = parseInt(input[1]);
     const cost = jerrycans * 100;
-    const code = Math.floor(100000 + Math.random() * 900000);
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
 
     const purchase = {
       phone: phoneNumber,
       jerrycans,
+      remaining: jerrycans,
       cost,
-      code: code.toString(),
-      status: 'unused',
+      code,
+      status: 'active', // can be active, partially used, fully used
+      fetchHistory: [],
       timestamp: new Date()
     };
 
@@ -101,16 +110,19 @@ Thank you for using MajiQuick.`;
         res.send(response);
       })
       .catch(err => {
-        console.error('❌ Firestore Error:', err);
+        console.error('❌ Firestore Error (Buy):', err);
         res.send('END System error. Try again.');
       });
     return;
+  }
 
-  } else if (text === '2') {
-    // Prompt for code
+  // Step 4: Check Balance Flow
+  else if (text === '2') {
     response = 'CON Enter your 6-digit code:';
+  }
 
-  } else if (level === 2 && input[0] === '2') {
+  // Step 5: Handle Code Lookup for Balance
+  else if (level === 2 && input[0] === '2') {
     const userCode = input[1];
 
     db.collection('purchases')
@@ -123,20 +135,31 @@ Thank you for using MajiQuick.`;
           response = 'END Invalid or expired code.';
         } else {
           const doc = snapshot.docs[0].data();
+          const statusText = doc.remaining === 0
+            ? 'fully used'
+            : doc.remaining < doc.jerrycans
+              ? 'partially used'
+              : 'unused';
+
           response = `END Code: ${doc.code}
-🪣 Jerrycans: ${doc.jerrycans}
+🪣 Remaining: ${doc.remaining}/${doc.jerrycans}
 💰 Cost: ${doc.cost} UGX
-📌 Status: ${doc.status}`;
+📌 Status: ${statusText}`;
         }
+
+        sendSMS(phoneNumber, response); // optional
         res.set('Content-Type', 'text/plain');
         res.send(response);
       })
       .catch(err => {
-        console.error('❌ Firestore Error (Check Code):', err);
+        console.error('❌ Firestore Error (Check):', err);
         res.send('END System error. Try again.');
       });
     return;
-  } else {
+  }
+
+  // Invalid Input Fallback
+  else {
     response = 'END Invalid input';
   }
 
@@ -145,4 +168,3 @@ Thank you for using MajiQuick.`;
 }
 
 module.exports = handleUSSD;
-
