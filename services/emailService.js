@@ -47,5 +47,28 @@ async function sendVerificationEmail({
     throw new Error('Email sending failed');
   }
 }
+async function sendEmail(to_email,message_intro,message) {
+ console.log(to_email);
+  const templateParams = {
+  email:to_email,
+  company_name: "MajiQuick",
+  message_intro: message_intro,
+  message_body: message,
+};
 
-module.exports = { sendVerificationEmail };
+
+  try {
+    const response = await emailjs.send(
+      process.env.EMAILJS_SERVICE_ID,
+      process.env.EMAILJS_TEMPLATE_ID,
+      templateParams
+    );
+
+    console.log('✅ Email sent:', response.status, response.text);
+  } catch (error) {
+    console.error('❌ Failed to send email:', error);
+    throw new Error('Email sending failed');
+  }
+}
+
+module.exports = { sendVerificationEmail,sendEmail };
