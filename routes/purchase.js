@@ -19,7 +19,7 @@ router.post('/', async (req, res) => {
       jerrycans,
       cost,
       code,
-      remaining: 0,
+      remaining: jerrycans,
       status: 'unused',
       timestamp: Timestamp.now(),
     });
