@@ -1,6 +1,6 @@
 const mqtt = require('mqtt');
 const admin = require('firebase-admin'); // ✅ Required to use admin.firestore()
-const db = require('../services/firebaseAdmin');
+const {db} = require('../services/firebaseAdmin');
 
 const topicFromHardware = 'majiquick/fromHardware';
 const topicToHardware = 'majiquick/toHardware';
@@ -16,39 +16,7 @@ function connectMQTT() {
       console.log(`📥 Subscribed to: ${topicFromHardware}`);
     });
   });
-
-  // client.on('message', async (topic, message) => {
-  //   try {
-  //     const data = JSON.parse(message.toString());
-  //     console.log(data);
-  //     if (data.code) {
-  //       const snapshot = await db.collection('purchases')
-  //         .where('code', '==', data.code)
-  //         .where('status', '==', 'unused')
-  //         .limit(1)
-  //         .get();
-
-  //       if (!snapshot.empty) {
-  //         const doc = snapshot.docs[0];
-  //         const purchase = doc.data();
-
-  //         // Mark code as used
-  //         await doc.ref.update({ status: 'used' });
-
-  //         // Send back response
-  //         const responsePayload = {
-  //           access: 'granted',
-  //           jerrycans: purchase.jerrycans
-  //         };
-  //         sendToHardware(responsePayload);
-  //       } else {
-  //         sendToHardware({ access: 'denied', reason: 'Invalid or used code' });
-  //       }
-  //     }
-  //   } catch (err) {
-  //     console.error('MQTT message error:', err);
-  //   }
-  // });
+  
   client.on('message', async (topic, message) => {
   try {
     const data = JSON.parse(message.toString());
