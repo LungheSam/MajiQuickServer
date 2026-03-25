@@ -2,6 +2,26 @@
 const { sendSMS } = require('../services/africasTalking');
 const { db } = require('../services/firebaseAdmin');
 
+// Validate and format phone number
+function validateAndFormatPhone(phone) {
+  // Remove any whitespace
+  phone = phone.trim();
+  
+  // Check if it starts with 07
+  if (!phone.startsWith('07')) {
+    return { valid: false, error: 'Phone number must start with 07' };
+  }
+  
+  // Check if it's exactly 10 digits
+  if (phone.length !== 10 || !/^\d+$/.test(phone)) {
+    return { valid: false, error: 'Phone number must be 10 digits' };
+  }
+  
+  // Format: +256 + number without leading 0
+  const formattedPhone = '+256' + phone.substring(1);
+  return { valid: true, phone: formattedPhone };
+}
+
 function handleUSSD(req, res) {
   const { sessionId, phoneNumber, text } = req.body;
   const input = text.split('*');
@@ -28,8 +48,21 @@ function handleUSSD(req, res) {
 
   // Step 4: Process Purchase
   else if (level === 3 && input[0] === '1') {
-    const userPhone = input[1];
+    const userPhoneInput = input[1];
     const jerrycans = parseInt(input[2]);
+    
+    // Validate and format phone number
+    const phoneValidation = validateAndFormatPhone(userPhoneInput);
+    
+    if (!phoneValidation.valid) {
+      response = `END Error: ${phoneValidation.error}
+Please try again with a valid phone number.`;
+      res.set('Content-Type', 'text/plain');
+      res.send(response);
+      return;
+    }
+    
+    const userPhone = phoneValidation.phone;
     const cost = jerrycans * 100;
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
