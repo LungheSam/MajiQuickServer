@@ -1,6 +1,6 @@
 
 const { sendSMS } = require('../services/africasTalking');
-const db = require('../services/firebaseAdmin');
+const { db } = require('../services/firebaseAdmin');
 
 function handleUSSD(req, res) {
   const { sessionId, phoneNumber, text } = req.body;
@@ -16,19 +16,25 @@ function handleUSSD(req, res) {
 2. Check Balance`;
   }
 
-  // Step 2: Buy Water Flow
+  // Step 2: Buy Water Flow - Enter Phone Number
   else if (text === '1') {
+    response = 'CON Enter your phone number:';
+  }
+
+  // Step 3: Buy Water Flow - After Phone, Enter Jerrycans
+  else if (level === 2 && input[0] === '1') {
     response = 'CON Enter number of jerrycans:';
   }
 
-  // Step 3: Process Purchase
-  else if (level === 2 && input[0] === '1') {
-    const jerrycans = parseInt(input[1]);
+  // Step 4: Process Purchase
+  else if (level === 3 && input[0] === '1') {
+    const userPhone = input[1];
+    const jerrycans = parseInt(input[2]);
     const cost = jerrycans * 100;
     const code = Math.floor(100000 + Math.random() * 900000).toString();
 
     const purchase = {
-      phone: phoneNumber,
+      phone: userPhone,
       jerrycans,
       remaining: jerrycans,
       cost,
@@ -41,7 +47,7 @@ function handleUSSD(req, res) {
     db.collection('purchases').add(purchase)
       .then(() => {
         const msg = `MajiQuick:\nYou bought ${jerrycans} jerrycans.\nCode: ${code}`;
-        sendSMS(phoneNumber, msg);
+        sendSMS(userPhone, msg);
         response = `END You bought ${jerrycans} jerrycans.
 Code: ${code}
 Cost: ${cost} UGX
@@ -56,12 +62,12 @@ Thank you for using MajiQuick.`;
     return;
   }
 
-  // Step 4: Check Balance Flow
+  // Step 5: Check Balance Flow
   else if (text === '2') {
     response = 'CON Enter your 6-digit code:';
   }
 
-  // Step 5: Handle Code Lookup for Balance
+  // Step 6: Handle Code Lookup for Balance
   else if (level === 2 && input[0] === '2') {
     const userCode = input[1];
 
