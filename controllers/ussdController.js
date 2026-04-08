@@ -93,7 +93,7 @@ function handleUSSD(req, res) {
     response = 'CON Enter your phone number:';
   }
 
-  // Step 3: Verify user exists - if yes, ask for jerrycans
+  // Step 3: Verify user exists - if yes, ask for NIN
   else if (level === 2 && input[0] === '1') {
     const userPhoneInput = input[1];
     
@@ -119,8 +119,8 @@ Register first via option 3.`;
         return;
       }
       
-      // User exists, ask for jerrycans
-      response = 'CON How many jerrycans?';
+      // User exists, ask for NIN
+      response = 'CON Enter your NIN:';
       res.set('Content-Type', 'text/plain');
       res.send(response);
     }).catch(err => {
@@ -130,10 +130,10 @@ Register first via option 3.`;
     return;
   }
 
-  // Step 4: Process Purchase
+  // Step 4: Verify NIN - if valid, ask for jerrycans
   else if (level === 3 && input[0] === '1') {
     const userPhoneInput = input[1];
-    const jerrycans = parseInt(input[2]);
+    const userNIN = input[2];
     
     // Validate phone
     const phoneValidation = validateAndFormatPhone(userPhoneInput);
@@ -146,35 +146,94 @@ Register first via option 3.`;
     }
     
     const userPhone = phoneValidation.phone;
-    const cost = jerrycans * 100;
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Verify user exists and NIN matches
+    Promise.all([
+      getUserByPhone(userPhone),
+      verifyNINAndGetUser(userNIN)
+    ]).then(([user, ninVerification]) => {
+      if (!user || !ninVerification.verified) {
+        response = 'END Authentication failed. Invalid phone or NIN.';
+        res.set('Content-Type', 'text/plain');
+        res.send(response);
+        return;
+      }
+      
+      // Auth successful, ask for jerrycans
+      response = 'CON How many jerrycans?';
+      res.set('Content-Type', 'text/plain');
+      res.send(response);
+    }).catch(err => {
+      console.error('Auth error:', err);
+      res.send('END System error. Try again.');
+    });
+    return;
+  }
 
-    const purchase = {
-      phone: userPhone,
-      jerrycans,
-      remaining: jerrycans,
-      cost,
-      code,
-      status: 'active',
-      fetchHistory: [],
-      timestamp: new Date()
-    };
+  // Step 5: Process Purchase
+  else if (level === 4 && input[0] === '1') {
+    const userPhoneInput = input[1];
+    const userNIN = input[2];
+    const jerrycans = parseInt(input[3]);
+    
+    // Validate phone
+    const phoneValidation = validateAndFormatPhone(userPhoneInput);
+    
+    if (!phoneValidation.valid) {
+      response = `END Error: ${phoneValidation.error}`;
+      res.set('Content-Type', 'text/plain');
+      res.send(response);
+      return;
+    }
+    
+    const userPhone = phoneValidation.phone;
+    
+    // Verify user and NIN one more time before purchase
+    Promise.all([
+      getUserByPhone(userPhone),
+      verifyNINAndGetUser(userNIN)
+    ]).then(([user, ninVerification]) => {
+      if (!user || !ninVerification.verified) {
+        response = 'END Authentication failed. Cannot process purchase.';
+        res.set('Content-Type', 'text/plain');
+        res.send(response);
+        return;
+      }
+      
+      const cost = jerrycans * 100;
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
 
-    db.collection('purchases').add(purchase)
-      .then(() => {
-        const msg = `MajiQuick:\nYou bought ${jerrycans} jerrycans.\nCode: ${code}`;
-        sendSMS(userPhone, msg);
-        response = `END You bought ${jerrycans} jerrycans.
+      const purchase = {
+        phone: userPhone,
+        nin: userNIN,
+        jerrycans,
+        remaining: jerrycans,
+        cost,
+        code,
+        status: 'active',
+        fetchHistory: [],
+        timestamp: new Date()
+      };
+
+      db.collection('purchases').add(purchase)
+        .then(() => {
+          const msg = `MajiQuick:\nYou bought ${jerrycans} jerrycans.\nCode: ${code}`;
+          sendSMS(userPhone, msg);
+          response = `END You bought ${jerrycans} jerrycans.
 Code: ${code}
 Cost: ${cost} UGX
 Thank you!`;
-        res.set('Content-Type', 'text/plain');
-        res.send(response);
-      })
-      .catch(err => {
-        console.error('❌ Firestore Error (Buy):', err);
-        res.send('END System error. Try again.');
-      });
+          res.set('Content-Type', 'text/plain');
+          res.send(response);
+        })
+        .catch(err => {
+          console.error('❌ Firestore Error (Buy):', err);
+          res.send('END System error. Try again.');
+        });
+    }).catch(err => {
+      console.error('Auth error:', err);
+      res.send('END System error. Try again.');
+    });
     return;
   }
 
