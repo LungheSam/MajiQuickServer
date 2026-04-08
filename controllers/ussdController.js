@@ -1,6 +1,6 @@
 
 const { sendSMS } = require('../services/africasTalking');
-const { db, admin } = require('../services/firebaseAdmin');
+const { db, admin, auth } = require('../services/firebaseAdmin');
 
 // Validate and format phone number
 function validateAndFormatPhone(phone) {
@@ -59,6 +59,17 @@ async function verifyNINAndGetUser(nin) {
     console.error('❌ Error verifying NIN:', err);
     return { verified: false, error: 'Verification error' };
   }
+}
+
+// Generate random password
+function generatePassword() {
+  const length = 12;
+  const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%';
+  let password = '';
+  for (let i = 0; i < length; i++) {
+    password += charset.charAt(Math.floor(Math.random() * charset.length));
+  }
+  return password;
 }
 
 function handleUSSD(req, res) {
@@ -272,22 +283,29 @@ Thank you!`;
         .then(snapshot => {
           if (snapshot.empty) {
             response = 'END Invalid or expired code.';
-          } else {
-            const doc = snapshot.docs[0].data();
-            const statusText = doc.remaining === 0
-              ? 'fully used'
-              : doc.remaining < doc.jerrycans
-                ? 'partially used'
-                : 'unused';
+            res.set('Content-Type', 'text/plain');
+            res.send(response);
+            return;
+          }
+          
+          const doc = snapshot.docs[0].data();
+          const statusText = doc.remaining === 0
+            ? 'fully used'
+            : doc.remaining < doc.jerrycans
+              ? 'partially used'
+              : 'unused';
 
-            response = `END Code: ${doc.code}
+          response = `END Code: ${doc.code}
 🪣 Remaining: ${doc.remaining}/${doc.jerrycans}
 💰 Cost: ${doc.cost} UGX
 📌 Status: ${statusText}`;
-          }
 
           res.set('Content-Type', 'text/plain');
           res.send(response);
+          
+          // Send SMS with balance info
+          const smsMessage = `MajiQuick Balance\nCode: ${doc.code}\nRemaining: ${doc.remaining}/${doc.jerrycans}\nCost: ${doc.cost} UGX\nStatus: ${statusText}`;
+          sendSMS(userPhone, smsMessage);
         })
         .catch(err => {
           console.error('❌ Firestore Error (Check):', err);
@@ -353,29 +371,53 @@ Thank you!`;
       }
       
       const userData = ninVerification.userData;
+      const email = userData.email;
+      const fullName = userData.fullName || userData.name;
+      const generatedPassword = generatePassword();
       
-      // Create new user in Firestore
-      const newUser = {
-        phone: userPhone,
-        nin: userNIN,
-        name: userData.fullName || userData.name,
-        email: userData.email || '',
-        createdAt: admin.firestore.Timestamp.now()
-      };
-      
-      db.collection('users').add(newUser)
-        .then(docRef => {
-          response = `END Account created!
-Name: ${newUser.name}
+      // Create Firebase Auth user
+      auth.createUser({
+        email: email,
+        password: generatedPassword,
+        displayName: fullName
+      }).then(userRecord => {
+        // Create new user in Firestore
+        const newUser = {
+          uid: userRecord.uid,
+          phone: userPhone,
+          nin: userNIN,
+          name: fullName,
+          email: email,
+          createdAt: admin.firestore.Timestamp.now()
+        };
+        
+        return db.collection('users').doc(userRecord.uid).set(newUser)
+          .then(() => {
+            // Send SMS with account details
+            const smsMessage = `MajiQuick Account Created!
+Name: ${fullName}
 Phone: ${userPhone}
-Thank you!`;
-          res.set('Content-Type', 'text/plain');
-          res.send(response);
-        })
-        .catch(err => {
-          console.error('❌ Error creating user:', err);
-          res.send('END Error creating account. Try again.');
-        });
+
+USSD: Dial *384*22887# to buy water
+
+WEB DASHBOARD:
+Email: ${email}
+Password: ${generatedPassword}
+Link: http://maji-quick-web-app.vercel.app/login`;
+            
+            sendSMS(userPhone, smsMessage);
+            
+            response = `END Account created!
+Name: ${fullName}
+Phone: ${userPhone}
+Check SMS for login details.`;
+            res.set('Content-Type', 'text/plain');
+            res.send(response);
+          });
+      }).catch(err => {
+        console.error('❌ Error creating Firebase Auth user:', err);
+        res.send('END Error creating account. Try again.');
+      });
     }).catch(err => {
       console.error('NIN verification error:', err);
       res.send('END System error. Try again.');
