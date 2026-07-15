@@ -1,11 +1,56 @@
 const mqtt = require('mqtt');
 const admin = require('firebase-admin'); // ✅ Required to use admin.firestore()
 const {db} = require('../services/firebaseAdmin');
+const { sendSMS } = require('../services/africasTalking');
 
 const topicFromHardware = 'majiquick/fromHardware';
 const topicToHardware = 'majiquick/toHardware';
 
 let client;
+
+function normalizePhoneNumber(phone) {
+  if (!phone) return null;
+
+  const value = String(phone).trim();
+  if (!value) return null;
+
+  if (value.startsWith('+')) return value;
+  if (value.startsWith('0')) return `+256${value.substring(1)}`;
+  if (value.startsWith('256')) return `+${value}`;
+
+  return value;
+}
+
+async function getTapOwnerPhoneByDeviceId(deviceId) {
+  if (!deviceId) return null;
+
+  const normalizedDeviceId = String(deviceId).trim();
+  if (!normalizedDeviceId) return null;
+
+  const collectionNames = ['tapowners', 'tapOwners', 'tapowner'];
+
+  for (const collectionName of collectionNames) {
+    try {
+      const snapshot = await db.collection(collectionName)
+        .where('deviceID', '==', normalizedDeviceId)
+        .limit(1)
+        .get();
+
+      if (!snapshot.empty) {
+        const ownerDoc = snapshot.docs[0].data();
+        const ownerPhone = ownerDoc.phone || ownerDoc.phoneNumber;
+
+        if (ownerPhone) {
+          return normalizePhoneNumber(ownerPhone);
+        }
+      }
+    } catch (err) {
+      console.error(`❌ Error looking up tap owner in ${collectionName}:`, err);
+    }
+  }
+
+  return null;
+}
 
 function connectMQTT() {
   client = mqtt.connect('mqtt://broker.hivemq.com');
@@ -22,7 +67,7 @@ function connectMQTT() {
     const data = JSON.parse(message.toString());
     console.log('📩 Received from Hardware:', data);
 
-    const { code, action } = data;
+    const { code, action, deviceID, deviceId } = data;
 
     if (!code) return;
 
@@ -63,6 +108,16 @@ function connectMQTT() {
             count: 1
           })
         });
+
+        const hardwareDeviceId = deviceID || deviceId;
+        const tapOwnerPhoneNumber = await getTapOwnerPhoneByDeviceId(hardwareDeviceId);
+
+        if (tapOwnerPhoneNumber) {
+          const ownerMessage = 'MajiQuick: Someone fetched water from your tap. You earned 100 UGX.';
+          await sendSMS(tapOwnerPhoneNumber, ownerMessage);
+        } else {
+          console.log(`⚠️ No tap owner found for device ID ${hardwareDeviceId} for fetch notification`);
+        }
 
         sendToHardware({ fetched: 1, remaining: newRemaining });
       } else {
